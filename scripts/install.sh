@@ -56,7 +56,7 @@ echo "Installing signal-cli..."
 SIGNAL_CLI_DIR="/opt/signal-cli"
 mkdir -p "$SIGNAL_CLI_DIR"
 
-wget "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}-Linux.tar.gz" \
+wget "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}.tar.gz" \
     -O /tmp/signal-cli.tar.gz
 
 tar -xzf /tmp/signal-cli.tar.gz -C /opt/
