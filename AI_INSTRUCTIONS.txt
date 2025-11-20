@@ -1,0 +1,43 @@
+CONFIGURATION:
+# 1. Install
+cd /opt
+sudo git clone https://github.com/JanKnapen/signal-controller.git
+cd signal-controller
+sudo chmod +x scripts/*.sh
+sudo ./scripts/install.sh
+
+# 2. Register Signal
+sudo ./scripts/register_signal.sh
+
+# 3. Configure (generate secure API key)
+API_KEY=$(openssl rand -hex 32)
+sudo mkdir -p /etc/signal-controller
+sudo nano /etc/signal-controller/.env
+# Add your phone number and API key
+
+# 4. Get SSL Certificate
+sudo certbot certonly --standalone -d your-domain.com
+
+# 5. Start Services
+sudo systemctl enable --now signal-cli
+sudo systemctl enable --now signal-controller-public
+sudo systemctl enable --now signal-controller-private
+
+# 6. Test
+./scripts/send_message.sh "+1234567890" "Hello World"
+./scripts/query_messages.sh --limit 10
+
+
+SEND MESSAGE:
+curl -X POST http://localhost:9000/send \
+  -H "X-API-Key: YOUR_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"to": "+1234567890", "message": "Hello!"}'
+
+QUERY MESSAGES:
+curl -X GET "http://localhost:9000/messages?limit=10" \
+  -H "X-API-Key: YOUR_KEY"
+
+GET STATISTICS:
+curl -X GET http://localhost:9000/stats \
+  -H "X-API-Key: YOUR_KEY"
