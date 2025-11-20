@@ -1,0 +1,44 @@
+[Unit]
+Description=SignalController Public Interface (Webhook Receiver)
+After=network.target signal-cli.service
+Requires=signal-cli.service
+Documentation=https://github.com/JanKnapen/signal-controller
+
+[Service]
+Type=simple
+User=signal
+Group=signal
+
+# Environment
+EnvironmentFile=/etc/signal-controller/.env
+Environment="SIGNAL_CLI_URL=http://localhost:8080"
+Environment="DATABASE_PATH=/var/lib/signal-controller/messages.db"
+
+# Working directory
+WorkingDirectory=/opt/signal-controller
+
+# Run the public interface
+ExecStart=/opt/signal-controller/venv/bin/python3 \
+    /opt/signal-controller/backend/main.py public
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/signal-controller /var/log/signal-controller
+
+# Resource limits
+LimitNOFILE=65536
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=signal-controller-public
+
+[Install]
+WantedBy=multi-user.target

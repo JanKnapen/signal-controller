@@ -1,0 +1,82 @@
+# .gitignore for SignalController
+
+# Environment variables
+.env
+.env.local
+.env.production
+/etc/signal-controller/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Database
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+/var/log/
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SSL Certificates (never commit!)
+*.pem
+*.key
+*.crt
+*.csr
+*.cer
+*.p12
+*.pfx
+
+# Backups
+*.bak
+*.backup
+backup/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Docker
+docker-compose.override.yml
+
+# Temporary files
+*.tmp
+tmp/
+temp/

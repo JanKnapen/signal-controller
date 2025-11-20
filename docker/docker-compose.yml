@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  # Signal CLI service
+  signal-cli:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: signal-cli
+    restart: unless-stopped
+    environment:
+      - MODE=native
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - signal-data:/home/.local/share/signal-cli
+    networks:
+      - signal-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/about"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SignalController Public Interface
+  signal-controller-public:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: signal-controller-public
+    restart: unless-stopped
+    command: python3 backend/main.py public
+    ports:
+      - "0.0.0.0:8443:8443"
+    environment:
+      - SIGNAL_CLI_URL=http://signal-cli:8080
+      - DATABASE_PATH=/data/messages.db
+      - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER}
+      - SIGNAL_API_KEY=${SIGNAL_API_KEY}
+      - SSL_CERT_FILE=/certs/fullchain.pem
+      - SSL_KEY_FILE=/certs/privkey.pem
+    volumes:
+      - signal-controller-data:/data
+      - signal-controller-logs:/var/log/signal-controller
+      - ./certs:/certs:ro
+    depends_on:
+      - signal-cli
+    networks:
+      - signal-network
+    healthcheck:
+      test: ["CMD", "curl", "-fk", "https://localhost:8443/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SignalController Private Interface
+  signal-controller-private:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: signal-controller-private
+    restart: unless-stopped
+    command: python3 backend/main.py private
+    ports:
+      - "127.0.0.1:9000:9000"
+    environment:
+      - SIGNAL_CLI_URL=http://signal-cli:8080
+      - DATABASE_PATH=/data/messages.db
+      - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER}
+      - SIGNAL_API_KEY=${SIGNAL_API_KEY}
+    volumes:
+      - signal-controller-data:/data
+      - signal-controller-logs:/var/log/signal-controller
+    depends_on:
+      - signal-cli
+    networks:
+      - signal-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: signal-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/signal-controller.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./certs:/etc/letsencrypt/live/your-domain.com:ro
+      - nginx-cache:/var/cache/nginx
+    depends_on:
+      - signal-controller-public
+    networks:
+      - signal-network
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  signal-network:
+    driver: bridge
+
+volumes:
+  signal-data:
+  signal-controller-data:
+  signal-controller-logs:
+  nginx-cache:

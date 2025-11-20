@@ -1,0 +1,42 @@
+[Unit]
+Description=Signal CLI REST API Service
+After=network.target
+Documentation=https://github.com/AsamK/signal-cli
+
+[Service]
+Type=simple
+User=signal
+Group=signal
+
+# Environment
+EnvironmentFile=-/etc/signal-controller/.env
+
+# Working directory
+WorkingDirectory=/opt/signal-cli
+
+# Command to run signal-cli in REST API mode
+ExecStart=/opt/signal-cli/bin/signal-cli \
+    --config /var/lib/signal-controller/signal-config \
+    -a ${SIGNAL_PHONE_NUMBER} \
+    daemon \
+    --http 0.0.0.0:8080 \
+    --send-read-receipts
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/signal-controller
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=signal-cli
+
+[Install]
+WantedBy=multi-user.target
