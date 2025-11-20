@@ -54,7 +54,12 @@ fi
 # Install signal-cli
 echo "Installing signal-cli..."
 SIGNAL_CLI_DIR="/opt/signal-cli"
-mkdir -p "$SIGNAL_CLI_DIR"
+
+# Remove old installation if exists
+if [ -d "$SIGNAL_CLI_DIR" ]; then
+    echo "Removing old signal-cli installation..."
+    rm -rf "$SIGNAL_CLI_DIR"
+fi
 
 wget "https://github.com/AsamK/signal-cli/releases/download/v${SIGNAL_CLI_VERSION}/signal-cli-${SIGNAL_CLI_VERSION}.tar.gz" \
     -O /tmp/signal-cli.tar.gz
@@ -70,9 +75,17 @@ echo "signal-cli installed: $(signal-cli --version)"
 
 # Copy application files
 echo "Installing SignalController application..."
-cp -r ./backend "$INSTALL_DIR/"
-cp -r ./database "$INSTALL_DIR/"
-cp -r ./scripts "$INSTALL_DIR/"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Only copy if not running from target directory
+if [ "$SOURCE_DIR" != "$INSTALL_DIR" ]; then
+    cp -r "$SOURCE_DIR/backend" "$INSTALL_DIR/"
+    cp -r "$SOURCE_DIR/database" "$INSTALL_DIR/"
+    cp -r "$SOURCE_DIR/scripts" "$INSTALL_DIR/"
+else
+    echo "Already in target directory, skipping file copy"
+fi
 
 # Set up Python virtual environment
 echo "Setting up Python virtual environment..."
