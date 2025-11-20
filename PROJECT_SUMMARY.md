@@ -281,7 +281,7 @@ signal-controller/
 - 10GB disk space
 
 ### Installed by Script
-- signal-cli v0.13.1
+- signal-cli v0.13.22
 - Python packages (FastAPI, Uvicorn, etc.)
 - SQLite3
 - Nginx

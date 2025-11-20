@@ -97,9 +97,9 @@ sudo apt-get install -y python3 python3-pip python3-venv openjdk-17-jre-headless
 #### 2. Install signal-cli
 ```bash
 # Download signal-cli
-wget https://github.com/AsamK/signal-cli/releases/download/v0.13.1/signal-cli-0.13.1-Linux.tar.gz
-tar -xzf signal-cli-0.13.1-Linux.tar.gz
-sudo mv signal-cli-0.13.1 /opt/signal-cli
+wget https://github.com/AsamK/signal-cli/releases/download/v0.13.22/signal-cli-0.13.22-Linux.tar.gz
+tar -xzf signal-cli-0.13.22-Linux.tar.gz
+sudo mv signal-cli-0.13.22 /opt/signal-cli
 sudo ln -s /opt/signal-cli/bin/signal-cli /usr/local/bin/signal-cli
 ```
 

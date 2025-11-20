@@ -22,7 +22,7 @@ INSTALL_DIR="/opt/signal-controller"
 DATA_DIR="/var/lib/signal-controller"
 LOG_DIR="/var/log/signal-controller"
 SERVICE_USER="signal"
-SIGNAL_CLI_VERSION="0.13.1"
+SIGNAL_CLI_VERSION="0.13.22"
 
 echo "Creating directories..."
 mkdir -p "$INSTALL_DIR"

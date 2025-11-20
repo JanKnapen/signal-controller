@@ -248,7 +248,7 @@ GET  /health           # Health check
 - aiosqlite (async SQLite)
 
 ### External
-- signal-cli v0.13.1+ (Signal protocol)
+- signal-cli v0.13.22+ (Signal protocol)
 - Let's Encrypt (SSL certificates)
 
 ## 🎯 Use Cases
