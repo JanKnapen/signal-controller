@@ -5,6 +5,14 @@ This service provides two interfaces:
 2. Private interface (port 9000) - Sends Signal messages (internal only)
 """
 
+import os
+import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 from fastapi import FastAPI, HTTPException, Request, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
@@ -12,11 +20,10 @@ from typing import Optional, List
 import uvicorn
 from datetime import datetime
 import logging
-import sys
 
 from database.db import Database
-from signal_client import SignalClient
-from config import Config
+from backend.signal_client import SignalClient
+from backend.config import Config
 
 # Configure logging
 logging.basicConfig(
