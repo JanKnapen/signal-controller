@@ -13,7 +13,8 @@ class Config:
     def __init__(self):
         # Base paths
         self.BASE_DIR = Path(os.getenv('SIGNAL_CONTROLLER_BASE', '/opt/signal-controller'))
-        self.DATA_DIR = self.BASE_DIR / 'data'
+        # Use /var/lib for writable data (systemd ProtectSystem=strict makes /opt read-only)
+        self.DATA_DIR = Path('/var/lib/signal-controller')
         self.LOG_DIR = Path('/var/log/signal-controller')
         
         # Database
@@ -46,9 +47,19 @@ class Config:
         self.RATE_LIMIT_PUBLIC = int(os.getenv('RATE_LIMIT_PUBLIC', '60'))
         self.RATE_LIMIT_PRIVATE = int(os.getenv('RATE_LIMIT_PRIVATE', '120'))
         
-        # Create directories if they don't exist
-        self.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        self.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        # Create directories if they don't exist (only if writable)
+        # systemd services have these directories created by install.sh
+        try:
+            self.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            # Directory should already exist from install.sh
+            pass
+            
+        try:
+            self.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        except (PermissionError, OSError):
+            # Directory should already exist from install.sh
+            pass
         
     def validate(self):
         """Validate configuration"""
