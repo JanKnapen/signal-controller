@@ -58,7 +58,44 @@ echo "Requesting verification code for $PHONE_NUMBER..."
 echo "You will receive an SMS with a verification code."
 echo ""
 
-sudo -u "$SERVICE_USER" "$SIGNAL_CLI" --config "$CONFIG_DIR" -a "$PHONE_NUMBER" register
+# Try to register, capture output
+REGISTER_OUTPUT=$(sudo -u "$SERVICE_USER" "$SIGNAL_CLI" --config "$CONFIG_DIR" -a "$PHONE_NUMBER" register 2>&1) || REGISTER_FAILED=1
+
+echo "$REGISTER_OUTPUT"
+
+# Check if captcha is required
+if echo "$REGISTER_OUTPUT" | grep -q "Captcha required"; then
+    echo ""
+    echo "=========================================="
+    echo "CAPTCHA REQUIRED"
+    echo "=========================================="
+    echo ""
+    echo "Steps to get captcha token:"
+    echo "1. Open: https://signalcaptchas.org/registration/generate.html"
+    echo "2. Complete the captcha"
+    echo "3. Right-click on 'Open Signal' button"
+    echo "4. Select 'Copy link address'"
+    echo "5. Paste the FULL link below"
+    echo ""
+    echo "Example link format:"
+    echo "signalcaptcha://signal-hcaptcha.5fad97ac-7d06-4e97-b2e7-07f5d23fe1a3.registration.signalcaptchas.org"
+    echo ""
+    read -p "Paste the captcha link here: " CAPTCHA_LINK
+    
+    if [ -z "$CAPTCHA_LINK" ]; then
+        echo "Error: Captcha link cannot be empty"
+        exit 1
+    fi
+    
+    # Extract token from link (remove signalcaptcha:// prefix)
+    CAPTCHA_TOKEN="${CAPTCHA_LINK#signalcaptcha://}"
+    
+    echo ""
+    echo "Registering with captcha token..."
+    sudo -u "$SERVICE_USER" "$SIGNAL_CLI" --config "$CONFIG_DIR" -a "$PHONE_NUMBER" register --captcha "$CAPTCHA_TOKEN"
+    echo ""
+    echo "Registration request sent! Check your phone for SMS."
+fi
 
 echo ""
 echo "Registration request sent!"
