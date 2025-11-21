@@ -8,6 +8,7 @@ set -e
 
 SERVICE_USER="signal"
 SIGNAL_CLI="/usr/local/bin/signal-cli"
+CONFIG_DIR="/var/lib/signal-controller/signal-config"
 
 echo "=========================================="
 echo "Signal CLI Registration Helper"
@@ -26,6 +27,12 @@ if [ ! -f "$SIGNAL_CLI" ]; then
     echo "Please run install.sh first"
     exit 1
 fi
+
+# Create and set permissions for config directory
+echo "Setting up signal-cli configuration directory..."
+mkdir -p "$CONFIG_DIR"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$CONFIG_DIR"
+chmod 700 "$CONFIG_DIR"
 
 # Get phone number
 read -p "Enter your phone number (with country code, e.g., +1234567890): " PHONE_NUMBER
@@ -51,7 +58,7 @@ echo "Requesting verification code for $PHONE_NUMBER..."
 echo "You will receive an SMS with a verification code."
 echo ""
 
-sudo -u "$SERVICE_USER" "$SIGNAL_CLI" -a "$PHONE_NUMBER" register
+sudo -u "$SERVICE_USER" "$SIGNAL_CLI" --config "$CONFIG_DIR" -a "$PHONE_NUMBER" register
 
 echo ""
 echo "Registration request sent!"
@@ -66,7 +73,7 @@ fi
 # Verify
 echo ""
 echo "Verifying code..."
-sudo -u "$SERVICE_USER" "$SIGNAL_CLI" -a "$PHONE_NUMBER" verify "$VERIFICATION_CODE"
+sudo -u "$SERVICE_USER" "$SIGNAL_CLI" --config "$CONFIG_DIR" -a "$PHONE_NUMBER" verify "$VERIFICATION_CODE"
 
 echo ""
 echo "=========================================="
@@ -83,4 +90,4 @@ echo "2. Start the signal-cli service:"
 echo "   systemctl enable --now signal-cli"
 echo ""
 echo "3. Test signal-cli:"
-echo "   sudo -u $SERVICE_USER signal-cli -a $PHONE_NUMBER receive"
+echo "   sudo -u $SERVICE_USER signal-cli --config $CONFIG_DIR -a $PHONE_NUMBER receive"
