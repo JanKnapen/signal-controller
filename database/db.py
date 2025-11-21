@@ -47,11 +47,24 @@ class Database:
                 message_body TEXT,
                 attachments TEXT,
                 raw_data TEXT,
-                processed BOOLEAN DEFAULT 0,
-                INDEX idx_sender (sender_number),
-                INDEX idx_timestamp (timestamp),
-                INDEX idx_received (received_at)
+                processed BOOLEAN DEFAULT 0
             )
+        ''')
+        
+        # Create indexes for messages table
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_sender 
+            ON messages(sender_number)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_timestamp 
+            ON messages(timestamp)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_received 
+            ON messages(received_at)
         ''')
         
         # Conversations table (aggregate view)
