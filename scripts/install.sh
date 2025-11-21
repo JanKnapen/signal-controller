@@ -36,7 +36,7 @@ apt-get install -y \
     python3 \
     python3-pip \
     python3-venv \
-    openjdk-17-jre-headless \
+    openjdk-21-jre-headless \
     wget \
     curl \
     nginx \

@@ -276,7 +276,7 @@ signal-controller/
 ### System Requirements
 - Debian/Ubuntu Linux
 - Python 3.8+
-- Java 17 (for signal-cli)
+- Java 21 (for signal-cli)
 - 512MB RAM minimum
 - 10GB disk space
 

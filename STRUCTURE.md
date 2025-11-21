@@ -235,7 +235,7 @@ GET  /health           # Health check
 
 ### System
 - Python 3.8+
-- Java 17 (for signal-cli)
+- Java 21 (for signal-cli)
 - SQLite 3
 - Nginx
 - systemd
