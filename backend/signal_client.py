@@ -24,7 +24,7 @@ class SignalClient:
         attachment: Optional[str] = None
     ) -> dict:
         """
-        Send a message via signal-cli REST API
+        Send a message via signal-cli JSON-RPC API
         
         Args:
             recipient: Phone number or group ID
@@ -34,33 +34,40 @@ class SignalClient:
         Returns:
             Response from signal-cli
         """
-        endpoint = f"{self.base_url}/v2/send"
+        endpoint = f"{self.base_url}/api/v1/rpc"
         
+        # Build JSON-RPC request
         payload = {
-            "message": message,
-            "number": recipient,
-            "recipients": [recipient]
+            "jsonrpc": "2.0",
+            "method": "send",
+            "params": {
+                "recipient": [recipient],
+                "message": message
+            },
+            "id": 1
         }
         
-        # Handle attachments if provided
+        # Add attachment if provided
         if attachment:
-            # For attachments, we need to use multipart form data
-            files = {'attachment': open(attachment, 'rb')}
-            response = await self.client.post(
-                endpoint,
-                data=payload,
-                files=files
-            )
-        else:
-            response = await self.client.post(
-                endpoint,
-                json=payload
-            )
+            payload["params"]["attachments"] = [attachment]
+        
+        response = await self.client.post(
+            endpoint,
+            json=payload
+        )
         
         response.raise_for_status()
-        logger.info(f"Message sent to {recipient}: {response.status_code}")
+        result = response.json()
         
-        return response.json()
+        # Check for JSON-RPC error
+        if "error" in result:
+            error_msg = result["error"].get("message", "Unknown error")
+            logger.error(f"JSON-RPC error: {error_msg}")
+            raise Exception(f"Signal API error: {error_msg}")
+        
+        logger.info(f"Message sent to {recipient}: {result.get('result', {})}")
+        
+        return result.get("result", {})
     
     async def send_group_message(
         self,
@@ -69,47 +76,72 @@ class SignalClient:
         attachment: Optional[str] = None
     ) -> dict:
         """
-        Send a message to a Signal group
+        Send a message to a Signal group via JSON-RPC API
         
         Args:
-            group_id: Internal group ID
+            group_id: Internal group ID (base64 encoded)
             message: Message text
             attachment: Path to attachment file (optional)
             
         Returns:
             Response from signal-cli
         """
-        endpoint = f"{self.base_url}/v2/send"
+        endpoint = f"{self.base_url}/api/v1/rpc"
         
+        # Build JSON-RPC request
         payload = {
-            "message": message,
-            "group_id": group_id
+            "jsonrpc": "2.0",
+            "method": "send",
+            "params": {
+                "groupId": group_id,
+                "message": message
+            },
+            "id": 2
         }
         
+        # Add attachment if provided
         if attachment:
-            files = {'attachment': open(attachment, 'rb')}
-            response = await self.client.post(
-                endpoint,
-                data=payload,
-                files=files
-            )
-        else:
-            response = await self.client.post(
-                endpoint,
-                json=payload
-            )
+            payload["params"]["attachments"] = [attachment]
+        
+        response = await self.client.post(
+            endpoint,
+            json=payload
+        )
         
         response.raise_for_status()
-        return response.json()
+        result = response.json()
+        
+        # Check for JSON-RPC error
+        if "error" in result:
+            error_msg = result["error"].get("message", "Unknown error")
+            logger.error(f"JSON-RPC error: {error_msg}")
+            raise Exception(f"Signal API error: {error_msg}")
+        
+        return result.get("result", {})
     
     async def get_registered_numbers(self) -> List[str]:
-        """Get list of registered phone numbers in signal-cli"""
-        endpoint = f"{self.base_url}/v1/accounts"
+        """Get list of registered phone numbers in signal-cli via JSON-RPC"""
+        endpoint = f"{self.base_url}/api/v1/rpc"
         
-        response = await self.client.get(endpoint)
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "listAccounts",
+            "params": {},
+            "id": 3
+        }
+        
+        response = await self.client.post(endpoint, json=payload)
         response.raise_for_status()
         
-        return response.json()
+        result = response.json()
+        
+        # Check for JSON-RPC error
+        if "error" in result:
+            error_msg = result["error"].get("message", "Unknown error")
+            logger.error(f"JSON-RPC error: {error_msg}")
+            raise Exception(f"Signal API error: {error_msg}")
+        
+        return result.get("result", [])
     
     async def close(self):
         """Close the HTTP client"""
