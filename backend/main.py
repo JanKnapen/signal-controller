@@ -296,11 +296,11 @@ if __name__ == "__main__":
                 log_level="info"
             )
         else:
-            logger.info("Starting public interface on port 8080 (HTTP - SSL handled by reverse proxy)")
+            logger.info("Starting public interface on port 8888 (HTTP - SSL handled by reverse proxy)")
             uvicorn.run(
                 public_app,
                 host="0.0.0.0",
-                port=8080,
+                port=8888,
                 log_level="info"
             )
     elif interface == "private":
