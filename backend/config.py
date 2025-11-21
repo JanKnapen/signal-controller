@@ -60,10 +60,11 @@ class Config:
         if not self.SIGNAL_PHONE_NUMBER:
             errors.append("SIGNAL_PHONE_NUMBER environment variable must be set")
         
-        if not Path(self.SSL_CERT_FILE).exists():
-            errors.append(f"SSL certificate not found: {self.SSL_CERT_FILE}")
-            
-        if not Path(self.SSL_KEY_FILE).exists():
-            errors.append(f"SSL key not found: {self.SSL_KEY_FILE}")
+        # SSL certificates are optional (e.g., when using Cloudflare)
+        # if not Path(self.SSL_CERT_FILE).exists():
+        #     errors.append(f"SSL certificate not found: {self.SSL_CERT_FILE}")
+        #     
+        # if not Path(self.SSL_KEY_FILE).exists():
+        #     errors.append(f"SSL key not found: {self.SSL_KEY_FILE}")
         
         return errors

@@ -1,7 +1,6 @@
 [Unit]
 Description=SignalController Public Interface (Webhook Receiver)
-After=network.target signal-cli.service
-Requires=signal-cli.service
+After=network.target
 Documentation=https://github.com/JanKnapen/signal-controller
 
 [Service]
