@@ -11,8 +11,7 @@ class Config:
     """Application configuration"""
     
     def __init__(self):
-        # Base paths
-        self.BASE_DIR = Path(os.getenv('SIGNAL_CONTROLLER_BASE', '/opt/signal-controller'))
+        # Data directories
         # Use /var/lib for writable data (systemd ProtectSystem=strict makes /opt read-only)
         self.DATA_DIR = Path('/var/lib/signal-controller')
         self.LOG_DIR = Path('/var/log/signal-controller')
@@ -37,10 +36,6 @@ class Config:
         # Example: "192.168.1.100,192.168.1.101,127.0.0.1"
         whitelist_str = os.getenv('PRIVATE_API_WHITELIST', '127.0.0.1')
         self.PRIVATE_API_WHITELIST = [ip.strip() for ip in whitelist_str.split(',') if ip.strip()]
-        
-        # Rate limiting (requests per minute)
-        self.RATE_LIMIT_PUBLIC = int(os.getenv('RATE_LIMIT_PUBLIC', '60'))
-        self.RATE_LIMIT_PRIVATE = int(os.getenv('RATE_LIMIT_PRIVATE', '120'))
         
         # Create directories if they don't exist (only if writable)
         # systemd services have these directories created by install.sh

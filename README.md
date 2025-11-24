@@ -22,6 +22,7 @@ sudo ./scripts/register_signal.sh
 ```
 SIGNAL_PHONE_NUMBER=+1234567890
 SIGNAL_API_KEY=your_secure_key
+PRIVATE_API_WHITELIST=127.0.0.1,192.168.1.100
 ```
 
 3. Point Cloudflare Tunnel to `http://YOUR_VM_IP:8888`
@@ -32,6 +33,8 @@ sudo systemctl enable --now signal-cli signal-controller-public signal-controlle
 ```
 
 ## Usage
+
+**Note:** Private API (port 9000) uses IP whitelisting. Only IPs in `PRIVATE_API_WHITELIST` can access it.
 
 Send:
 ```bash
