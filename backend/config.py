@@ -33,6 +33,11 @@ class Config:
         # API Security
         self.API_KEY = os.getenv('SIGNAL_API_KEY', 'CHANGE_ME_INSECURE_DEFAULT_KEY')
         
+        # IP Whitelist for private interface (comma-separated)
+        # Example: "192.168.1.100,192.168.1.101,127.0.0.1"
+        whitelist_str = os.getenv('PRIVATE_API_WHITELIST', '127.0.0.1')
+        self.PRIVATE_API_WHITELIST = [ip.strip() for ip in whitelist_str.split(',') if ip.strip()]
+        
         # Rate limiting (requests per minute)
         self.RATE_LIMIT_PUBLIC = int(os.getenv('RATE_LIMIT_PUBLIC', '60'))
         self.RATE_LIMIT_PRIVATE = int(os.getenv('RATE_LIMIT_PRIVATE', '120'))

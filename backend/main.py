@@ -15,6 +15,7 @@ sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI, HTTPException, Request, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import uvicorn
@@ -53,6 +54,19 @@ def verify_api_key(api_key: str = Security(api_key_header)):
         logger.warning(f"Invalid API key attempt")
         raise HTTPException(status_code=403, detail="Invalid API key")
     return api_key
+
+def verify_ip_whitelist(request: Request):
+    """Verify client IP is in whitelist for private interface"""
+    client_ip = request.client.host
+    
+    if client_ip not in config.PRIVATE_API_WHITELIST:
+        logger.warning(f"Unauthorized IP access attempt from {client_ip}")
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Access denied: IP {client_ip} not in whitelist"
+        )
+    
+    return client_ip
 
 
 async def listen_to_signal_events():
@@ -236,6 +250,35 @@ private_app = FastAPI(
 )
 
 
+@private_app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    """Middleware to check IP whitelist and API key for all private interface requests"""
+    client_ip = request.client.host
+    
+    # Skip checks for health endpoint
+    if request.url.path == "/health":
+        return await call_next(request)
+    
+    # Check IP whitelist
+    if client_ip not in config.PRIVATE_API_WHITELIST:
+        logger.warning(f"Unauthorized IP access attempt from {client_ip} to {request.url.path}")
+        return JSONResponse(
+            status_code=403,
+            content={"detail": f"Access denied: IP {client_ip} not in whitelist"}
+        )
+    
+    # Check API key
+    api_key = request.headers.get("X-API-Key")
+    if api_key != config.API_KEY:
+        logger.warning(f"Invalid API key attempt from {client_ip}")
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "Invalid API key"}
+        )
+    
+    return await call_next(request)
+
+
 class SendMessageRequest(BaseModel):
     """Request model for sending messages"""
     to: str = Field(..., description="Phone number or username to send to")
@@ -252,31 +295,28 @@ class SendMessageResponse(BaseModel):
 
 
 @private_app.post("/send", response_model=SendMessageResponse)
-async def send_message(
-    request: SendMessageRequest,
-    api_key: str = Depends(verify_api_key)
-):
+async def send_message(request_data: SendMessageRequest):
     """
     Send a Signal message via signal-cli
-    Requires valid API key in X-API-Key header
+    Requires valid API key in X-API-Key header and whitelisted IP
     """
     try:
-        logger.info(f"Sending message to {request.to}")
+        logger.info(f"Sending message to {request_data.to}")
         
         # Send via signal-cli
         result = await signal_client.send_message(
-            recipient=request.to,
-            message=request.message,
-            attachment=request.attachment
+            recipient=request_data.to,
+            message=request_data.message,
+            attachment=request_data.attachment
         )
         
-        logger.info(f"Message sent successfully to {request.to}")
+        logger.info(f"Message sent successfully to {request_data.to}")
         
         return SendMessageResponse(
             status="sent",
             timestamp=datetime.now().isoformat(),
-            recipient=request.to,
-            message_preview=request.message[:50] + "..." if len(request.message) > 50 else request.message
+            recipient=request_data.to,
+            message_preview=request_data.message[:50] + "..." if len(request_data.message) > 50 else request_data.message
         )
         
     except Exception as e:
@@ -288,12 +328,11 @@ async def send_message(
 async def get_messages(
     limit: int = 100,
     offset: int = 0,
-    sender: Optional[str] = None,
-    api_key: str = Depends(verify_api_key)
+    sender: Optional[str] = None
 ):
     """
     Retrieve stored messages from database
-    Requires valid API key in X-API-Key header
+    Requires valid API key in X-API-Key header and whitelisted IP
     """
     try:
         messages = db.get_messages(limit=limit, offset=offset, sender=sender)
@@ -309,13 +348,10 @@ async def get_messages(
 
 
 @private_app.get("/messages/{message_id}")
-async def get_message(
-    message_id: int,
-    api_key: str = Depends(verify_api_key)
-):
+async def get_message(message_id: int):
     """
     Retrieve a specific message by ID
-    Requires valid API key in X-API-Key header
+    Requires valid API key in X-API-Key header and whitelisted IP
     """
     try:
         message = db.get_message_by_id(message_id)
@@ -330,10 +366,10 @@ async def get_message(
 
 
 @private_app.get("/conversations")
-async def get_conversations(api_key: str = Depends(verify_api_key)):
+async def get_conversations():
     """
     Get all conversations with message counts
-    Requires valid API key in X-API-Key header
+    Requires valid API key in X-API-Key header and whitelisted IP
     """
     try:
         conversations = db.get_conversations()
@@ -347,10 +383,10 @@ async def get_conversations(api_key: str = Depends(verify_api_key)):
 
 
 @private_app.get("/stats")
-async def get_stats(api_key: str = Depends(verify_api_key)):
+async def get_stats():
     """
     Get message statistics
-    Requires valid API key in X-API-Key header
+    Requires valid API key in X-API-Key header and whitelisted IP
     """
     try:
         stats = db.get_statistics()
@@ -394,10 +430,10 @@ if __name__ == "__main__":
             log_level="info"
         )
     elif interface == "private":
-        logger.info("Starting private interface on port 9000")
+        logger.info(f"Starting private interface on port 9000 (IP whitelist: {config.PRIVATE_API_WHITELIST})")
         uvicorn.run(
             private_app,
-            host="127.0.0.1",  # Only bind to localhost for security
+            host="0.0.0.0",  # Bind to all interfaces, IP whitelist in middleware
             port=9000,
             log_level="info"
         )
