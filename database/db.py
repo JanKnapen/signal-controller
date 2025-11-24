@@ -256,6 +256,37 @@ class Database:
         
         return [dict(row) for row in rows]
     
+    def update_conversation(
+        self,
+        contact_number: str,
+        contact_name: Optional[str] = None,
+        last_message_at: Optional[datetime] = None
+    ):
+        """
+        Update or create a conversation entry
+        
+        Args:
+            contact_number: Contact phone number
+            contact_name: Contact name (optional)
+            last_message_at: Timestamp of last message (optional)
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        # Note: This is also handled automatically in store_message,
+        # but this method provides explicit control
+        cursor.execute('''
+            INSERT INTO conversations (contact_number, contact_name, last_message_at, message_count)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(contact_number) DO UPDATE SET
+                contact_name = COALESCE(excluded.contact_name, contact_name),
+                last_message_at = COALESCE(excluded.last_message_at, last_message_at),
+                message_count = message_count + 1
+        ''', (contact_number, contact_name, last_message_at))
+        
+        conn.commit()
+        conn.close()
+    
     def get_statistics(self) -> Dict[str, Any]:
         """
         Get database statistics
