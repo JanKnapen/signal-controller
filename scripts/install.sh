@@ -39,7 +39,6 @@ apt-get install -y \
     openjdk-21-jre-headless \
     wget \
     curl \
-    nginx \
     sqlite3
 
 # Create service user
@@ -131,11 +130,9 @@ echo "   SIGNAL_PHONE_NUMBER=+YOUR_PHONE_NUMBER"
 echo "   SIGNAL_API_KEY=YOUR_SECURE_RANDOM_KEY"
 echo "   (Generate key with: openssl rand -hex 32)"
 echo ""
-echo "3. Generate SSL certificates or use Let's Encrypt"
+echo "3. Configure Cloudflare Tunnel to point to http://YOUR_VM_IP:8888"
 echo ""
-echo "4. Configure Nginx (see nginx/signal-controller.conf)"
-echo ""
-echo "5. Start services:"
+echo "4. Start services:"
 echo "   systemctl enable --now signal-cli"
 echo "   systemctl enable --now signal-controller-public"
 echo "   systemctl enable --now signal-controller-private"

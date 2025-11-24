@@ -44,8 +44,6 @@ SignalController/
 │   ├── signal-cli.service                  # signal-cli REST service
 │   ├── signal-controller-public.service    # Public interface
 │   └── signal-controller-private.service   # Private interface
-├── nginx/
-│   └── signal-controller.conf  # Nginx reverse proxy config
 ├── docker/
 │   ├── Dockerfile
 │   ├── docker-compose.yml
@@ -77,7 +75,7 @@ sudo ./scripts/install.sh
 ```
 
 The script will:
-- Install system dependencies (Python, Java, nginx, etc.)
+- Install system dependencies (Python, Java, etc.)
 - Download and install signal-cli
 - Set up Python virtual environment
 - Create service user and directories
@@ -91,7 +89,7 @@ If you prefer manual installation or the script fails:
 #### 1. Install Dependencies
 ```bash
 sudo apt-get update
-sudo apt-get install -y python3 python3-pip python3-venv openjdk-17-jre-headless wget curl nginx sqlite3
+sudo apt-get install -y python3 python3-pip python3-venv openjdk-21-jre-headless wget curl sqlite3
 ```
 
 #### 2. Install signal-cli
@@ -189,28 +187,33 @@ sudo certbot certonly --standalone -d your-domain.com
 
 #### Option B: Self-Signed (Testing Only)
 ```bash
-sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-    -keyout /etc/ssl/private/signal-controller.key \
-    -out /etc/ssl/certs/signal-controller.crt
-```
+## 🔧 Configure Cloudflare Tunnel
 
-## 🔧 Configure Nginx
+Instead of nginx, this setup uses Cloudflare Tunnel for secure external access:
 
-1. **Copy nginx configuration**:
+1. **Install cloudflared on your reverse proxy/edge server**:
 ```bash
-sudo cp nginx/signal-controller.conf /etc/nginx/sites-available/signal-controller
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
 ```
 
-2. **Edit the configuration** and replace:
-   - `your-domain.com` with your actual domain
-   - SSL certificate paths if different
+2. **Configure tunnel** in `/etc/cloudflared/config.yml`:
+```yaml
+tunnel: YOUR_TUNNEL_ID
+credentials-file: /etc/cloudflared/YOUR_TUNNEL_ID.json
 
-3. **Enable the site**:
+ingress:
+  - hostname: signal-controller.your-domain.com
+    service: http://YOUR_VM_IP:8888
+  - service: http_status:404
+```
+
+3. **Start cloudflared**:
 ```bash
-sudo ln -s /etc/nginx/sites-available/signal-controller /etc/nginx/sites-enabled/
-sudo nginx -t  # Test configuration
-sudo systemctl reload nginx
+sudo systemctl enable --now cloudflared
 ```
+
+Cloudflare handles SSL/TLS termination, so the app runs on HTTP port 8888.
 
 ## 🎯 Start Services
 
@@ -235,11 +238,11 @@ sudo systemctl status signal-controller-private
 # Allow SSH (if not already)
 sudo ufw allow 22/tcp
 
-# Allow HTTP/HTTPS for public interface
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
+# Allow port 8888 for Cloudflare Tunnel (or restrict to tunnel server IP)
+sudo ufw allow from YOUR_TUNNEL_SERVER_IP to any port 8888
 
-# Block port 9000 from internet (private interface)
+# Block port 9000 from internet (private interface - localhost only)
+sudo ufw deny 9000/tcp
 sudo ufw deny 9000/tcp
 
 # Enable firewall
