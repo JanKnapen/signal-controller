@@ -37,9 +37,7 @@ SignalController/
 │   └── init_db.py          # Schema initialization
 ├── scripts/
 │   ├── install.sh          # Installation script
-│   ├── register_signal.sh  # Signal registration helper
-│   ├── send_message.sh     # Message sending script
-│   └── query_messages.sh   # Message query script
+│   └── register_signal.sh  # Signal registration helper
 ├── systemd/
 │   ├── signal-cli.service                  # signal-cli REST service
 │   ├── signal-controller-public.service    # Public interface
@@ -283,11 +281,6 @@ curl -X POST http://localhost:9000/send \
   }'
 ```
 
-#### Using the Script
-```bash
-./scripts/send_message.sh "+1234567890" "Hello World"
-```
-
 ### Querying Messages
 
 #### Get Recent Messages
@@ -296,16 +289,22 @@ curl -X GET "http://localhost:9000/messages?limit=10" \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
-#### Using the Script
+#### Get Conversations
 ```bash
-# Get last 10 messages
-./scripts/query_messages.sh --limit 10
+curl -X GET "http://localhost:9000/conversations" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
 
-# Get statistics
-./scripts/query_messages.sh --stats
+#### Get Statistics
+```bash
+curl -X GET "http://localhost:9000/stats" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
 
-# Filter by sender
-./scripts/query_messages.sh --sender "+1234567890" --limit 5
+#### Filter Messages by Sender
+```bash
+curl -X GET "http://localhost:9000/messages?sender=%2B1234567890&limit=5" \
+  -H "X-API-Key: YOUR_API_KEY"
 ```
 
 ### Checking Logs
