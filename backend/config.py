@@ -33,16 +33,6 @@ class Config:
         # API Security
         self.API_KEY = os.getenv('SIGNAL_API_KEY', 'CHANGE_ME_INSECURE_DEFAULT_KEY')
         
-        # SSL Certificates for public interface
-        self.SSL_CERT_FILE = os.getenv(
-            'SSL_CERT_FILE',
-            '/etc/ssl/certs/signal-controller.crt'
-        )
-        self.SSL_KEY_FILE = os.getenv(
-            'SSL_KEY_FILE',
-            '/etc/ssl/private/signal-controller.key'
-        )
-        
         # Rate limiting (requests per minute)
         self.RATE_LIMIT_PUBLIC = int(os.getenv('RATE_LIMIT_PUBLIC', '60'))
         self.RATE_LIMIT_PRIVATE = int(os.getenv('RATE_LIMIT_PRIVATE', '120'))
@@ -70,12 +60,5 @@ class Config:
         
         if not self.SIGNAL_PHONE_NUMBER:
             errors.append("SIGNAL_PHONE_NUMBER environment variable must be set")
-        
-        # SSL certificates are optional (e.g., when using Cloudflare)
-        # if not Path(self.SSL_CERT_FILE).exists():
-        #     errors.append(f"SSL certificate not found: {self.SSL_CERT_FILE}")
-        #     
-        # if not Path(self.SSL_KEY_FILE).exists():
-        #     errors.append(f"SSL key not found: {self.SSL_KEY_FILE}")
         
         return errors

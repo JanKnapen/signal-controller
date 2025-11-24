@@ -385,32 +385,14 @@ if __name__ == "__main__":
     interface = sys.argv[1]
     
     if interface == "public":
-        # Check if SSL certificates are configured
-        use_ssl = (
-            config.SSL_CERT_FILE and 
-            config.SSL_KEY_FILE and 
-            os.path.exists(config.SSL_CERT_FILE) and 
-            os.path.exists(config.SSL_KEY_FILE)
+        # Public interface - SSL handled by Cloudflare Tunnel
+        logger.info("Starting public interface on port 8888 (HTTP - SSL handled by Cloudflare)")
+        uvicorn.run(
+            public_app,
+            host="0.0.0.0",
+            port=8888,
+            log_level="info"
         )
-        
-        if use_ssl:
-            logger.info("Starting public interface on port 8443 with SSL")
-            uvicorn.run(
-                public_app,
-                host="0.0.0.0",
-                port=8443,
-                ssl_keyfile=config.SSL_KEY_FILE,
-                ssl_certfile=config.SSL_CERT_FILE,
-                log_level="info"
-            )
-        else:
-            logger.info("Starting public interface on port 8888 (HTTP - SSL handled by reverse proxy)")
-            uvicorn.run(
-                public_app,
-                host="0.0.0.0",
-                port=8888,
-                log_level="info"
-            )
     elif interface == "private":
         logger.info("Starting private interface on port 9000")
         uvicorn.run(
