@@ -83,9 +83,12 @@ def migrate_database():
         
         for row_id, raw_data_str in rows:
             try:
-                # Handle both string and already-parsed dict
+                # Handle double-encoded JSON (string of string)
                 if isinstance(raw_data_str, str):
                     raw_data = json.loads(raw_data_str)
+                    # Check if it's still a string (double-encoded)
+                    if isinstance(raw_data, str):
+                        raw_data = json.loads(raw_data)
                 else:
                     raw_data = raw_data_str
                 
@@ -107,7 +110,7 @@ def migrate_database():
                         updated_count += 1
                         group_messages_count += 1
                         
-            except (json.JSONDecodeError, KeyError, AttributeError) as e:
+            except (json.JSONDecodeError, KeyError, AttributeError, TypeError) as e:
                 print(f"  ⚠ Could not parse message {row_id}: {e}")
                 continue
         
