@@ -417,6 +417,32 @@ async def get_group_messages(
     """
     Get messages from a specific group
     Requires valid API key in X-API-Key header and whitelisted IP
+    Note: group_id must be URL-encoded
+    """
+    try:
+        messages = db.get_group_messages(group_id, limit, offset)
+        return {
+            "group_id": group_id,
+            "count": len(messages),
+            "limit": limit,
+            "offset": offset,
+            "messages": messages
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving group messages: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve group messages: {str(e)}")
+
+
+@private_app.get("/messages/group")
+async def get_group_messages_by_query(
+    group_id: str,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get messages from a specific group using query parameter
+    Requires valid API key in X-API-Key header and whitelisted IP
+    Example: /messages/group?group_id=J60Zsn1Msd9SWoeMHvhbNroMRUV32H7BY5n/oOqNlUc=
     """
     try:
         messages = db.get_group_messages(group_id, limit, offset)
