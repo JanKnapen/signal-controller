@@ -20,6 +20,9 @@ from typing import Optional, List
 import uvicorn
 from datetime import datetime
 import logging
+import asyncio
+import httpx
+import json
 
 from database.db import Database
 from backend.signal_client import SignalClient
@@ -52,15 +55,103 @@ def verify_api_key(api_key: str = Security(api_key_header)):
     return api_key
 
 
+async def listen_to_signal_events():
+    """
+    Background task to listen to signal-cli SSE stream for incoming messages
+    """
+    logger.info("Starting SSE listener for signal-cli events")
+    
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream('GET', f'{config.SIGNAL_CLI_URL}/api/v1/events') as response:
+                    logger.info("Connected to signal-cli events stream")
+                    
+                    async for line in response.aiter_lines():
+                        if line.startswith('data:'):
+                            # Extract JSON data from SSE format
+                            json_data = line[5:].strip()  # Remove 'data:' prefix
+                            
+                            try:
+                                data = json.loads(json_data)
+                                await process_incoming_message(data)
+                            except json.JSONDecodeError as e:
+                                logger.error(f"Failed to parse SSE data: {e}")
+                                
+        except Exception as e:
+            logger.error(f"SSE connection error: {e}")
+            logger.info("Reconnecting in 5 seconds...")
+            await asyncio.sleep(5)
+
+
+async def process_incoming_message(data: dict):
+    """Process an incoming message from signal-cli"""
+    try:
+        envelope = data.get('envelope', {})
+        
+        # Skip non-message events (typing indicators, receipts, etc.)
+        if 'dataMessage' not in envelope:
+            return
+        
+        # Extract message data
+        source_number = envelope.get('sourceNumber', envelope.get('source', 'unknown'))
+        source_name = envelope.get('sourceName', '')
+        timestamp = envelope.get('timestamp', int(datetime.now().timestamp() * 1000))
+        
+        # Get message content
+        data_message = envelope.get('dataMessage', {})
+        message_body = data_message.get('message', '')
+        
+        # Get attachments if any
+        attachments = data_message.get('attachments', [])
+        attachment_info = []
+        for att in attachments:
+            attachment_info.append({
+                'content_type': att.get('contentType', ''),
+                'filename': att.get('filename', ''),
+                'id': att.get('id', ''),
+                'size': att.get('size', 0)
+            })
+        
+        # Store message in database
+        message_id = db.store_message(
+            sender_number=source_number,
+            sender_name=source_name,
+            timestamp=timestamp,
+            message_body=message_body,
+            attachments=json.dumps(attachment_info) if attachment_info else None,
+            raw_data=json.dumps(data)
+        )
+        
+        # Update conversation
+        db.update_conversation(
+            contact_number=source_number,
+            contact_name=source_name,
+            last_message_at=datetime.fromtimestamp(timestamp / 1000)
+        )
+        
+        logger.info(f"Stored message {message_id} from {source_number}: {message_body[:50]}")
+        
+    except Exception as e:
+        logger.error(f"Error processing message: {e}", exc_info=True)
+
+
 # ============================================================================
-# PUBLIC INTERFACE - Port 8443 (Exposed to Internet)
+# PUBLIC INTERFACE - Port 8888 (Exposed to Internet)
 # ============================================================================
 
 public_app = FastAPI(
     title="SignalController - Public Interface",
-    description="Webhook receiver for incoming Signal messages",
+    description="Receives incoming Signal messages via SSE from signal-cli",
     version="1.0.0"
 )
+
+
+@public_app.on_event("startup")
+async def startup_event():
+    """Start background tasks on application startup"""
+    logger.info("Starting background SSE listener")
+    asyncio.create_task(listen_to_signal_events())
 
 
 class IncomingMessage(BaseModel):
