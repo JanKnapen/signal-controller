@@ -47,7 +47,9 @@ class Database:
                 message_body TEXT,
                 attachments TEXT,
                 raw_data TEXT,
-                processed BOOLEAN DEFAULT 0
+                processed BOOLEAN DEFAULT 0,
+                group_id TEXT,
+                group_name TEXT
             )
         ''')
         
@@ -67,6 +69,11 @@ class Database:
             ON messages(received_at)
         ''')
         
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_group_id 
+            ON messages(group_id)
+        ''')
+        
         # Conversations table (aggregate view)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS conversations (
@@ -75,7 +82,9 @@ class Database:
                 contact_name TEXT,
                 last_message_at TIMESTAMP,
                 message_count INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_group BOOLEAN DEFAULT 0,
+                group_id TEXT
             )
         ''')
         
@@ -104,7 +113,9 @@ class Database:
         timestamp: int,
         message_body: str,
         attachments: List[Dict] = None,
-        raw_data: Dict = None
+        raw_data: Dict = None,
+        group_id: str = None,
+        group_name: str = None
     ) -> int:
         """
         Store an incoming message
@@ -116,6 +127,8 @@ class Database:
             message_body: Message text
             attachments: List of attachment metadata
             raw_data: Raw envelope data from signal-cli
+            group_id: Group ID if message is from a group
+            group_name: Group name if message is from a group
             
         Returns:
             Message ID
@@ -130,33 +143,45 @@ class Database:
         cursor.execute('''
             INSERT INTO messages (
                 sender_number, sender_name, timestamp, message_body,
-                attachments, raw_data
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                attachments, raw_data, group_id, group_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             sender_number,
             sender_name,
             timestamp,
             message_body,
             attachments_json,
-            raw_data_json
+            raw_data_json,
+            group_id,
+            group_name
         ))
         
         message_id = cursor.lastrowid
         
         # Update or create conversation entry
+        # For groups, use group_id as the contact_number identifier
+        conversation_id = group_id if group_id else sender_number
+        conversation_name = group_name if group_name else sender_name
+        is_group = 1 if group_id else 0
+        
         cursor.execute('''
-            INSERT INTO conversations (contact_number, contact_name, last_message_at, message_count)
-            VALUES (?, ?, CURRENT_TIMESTAMP, 1)
+            INSERT INTO conversations (contact_number, contact_name, last_message_at, message_count, is_group, group_id)
+            VALUES (?, ?, CURRENT_TIMESTAMP, 1, ?, ?)
             ON CONFLICT(contact_number) DO UPDATE SET
                 contact_name = excluded.contact_name,
                 last_message_at = CURRENT_TIMESTAMP,
-                message_count = message_count + 1
-        ''', (sender_number, sender_name))
+                message_count = message_count + 1,
+                is_group = excluded.is_group,
+                group_id = excluded.group_id
+        ''', (conversation_id, conversation_name, is_group, group_id))
         
         conn.commit()
         conn.close()
         
-        logger.info(f"Stored message {message_id} from {sender_number}")
+        if group_id:
+            logger.info(f"Stored group message {message_id} from {sender_number} in group {group_name}")
+        else:
+            logger.info(f"Stored message {message_id} from {sender_number}")
         return message_id
     
     def get_messages(
@@ -248,6 +273,63 @@ class Database:
         
         cursor.execute('''
             SELECT * FROM conversations
+            ORDER BY last_message_at DESC
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+    
+    def get_group_messages(self, group_id: str, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """
+        Get messages from a specific group
+        
+        Args:
+            group_id: Group ID
+            limit: Maximum number of messages
+            offset: Number of messages to skip
+            
+        Returns:
+            List of message dictionaries
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM messages
+            WHERE group_id = ?
+            ORDER BY timestamp DESC
+            LIMIT ? OFFSET ?
+        ''', (group_id, limit, offset))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        messages = []
+        for row in rows:
+            message = dict(row)
+            if message['attachments']:
+                message['attachments'] = json.loads(message['attachments'])
+            if message['raw_data']:
+                message['raw_data'] = json.loads(message['raw_data'])
+            messages.append(message)
+        
+        return messages
+    
+    def get_group_conversations(self) -> List[Dict[str, Any]]:
+        """
+        Get all group conversations
+        
+        Returns:
+            List of group conversation dictionaries
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT * FROM conversations
+            WHERE is_group = 1
             ORDER BY last_message_at DESC
         ''')
         

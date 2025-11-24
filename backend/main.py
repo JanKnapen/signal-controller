@@ -116,6 +116,11 @@ async def process_incoming_message(data: dict):
         data_message = envelope.get('dataMessage', {})
         message_body = data_message.get('message', '')
         
+        # Get group info if this is a group message
+        group_info = data_message.get('groupInfo', {})
+        group_id = group_info.get('groupId') if group_info else None
+        group_name = group_info.get('groupName') if group_info else None
+        
         # Get attachments if any
         attachments = data_message.get('attachments', [])
         attachment_info = []
@@ -134,17 +139,21 @@ async def process_incoming_message(data: dict):
             timestamp=timestamp,
             message_body=message_body,
             attachments=json.dumps(attachment_info) if attachment_info else None,
-            raw_data=json.dumps(data)
+            raw_data=json.dumps(data),
+            group_id=group_id,
+            group_name=group_name
         )
         
-        # Update conversation
-        db.update_conversation(
-            contact_number=source_number,
-            contact_name=source_name,
-            last_message_at=datetime.fromtimestamp(timestamp / 1000)
-        )
-        
-        logger.info(f"Stored message {message_id} from {source_number}: {message_body[:50]}")
+        if group_id:
+            logger.info(f"Stored group message {message_id} from {source_number} in group '{group_name}': {message_body[:50]}")
+        else:
+            # Update individual conversation
+            db.update_conversation(
+                contact_number=source_number,
+                contact_name=source_name,
+                last_message_at=datetime.fromtimestamp(timestamp / 1000)
+            )
+            logger.info(f"Stored message {message_id} from {source_number}: {message_body[:50]}")
         
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
@@ -380,6 +389,47 @@ async def get_conversations():
     except Exception as e:
         logger.error(f"Error retrieving conversations: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve conversations: {str(e)}")
+
+
+@private_app.get("/groups")
+async def get_groups():
+    """
+    Get all group conversations
+    Requires valid API key in X-API-Key header and whitelisted IP
+    """
+    try:
+        groups = db.get_group_conversations()
+        return {
+            "groups": groups,
+            "count": len(groups)
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving groups: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve groups: {str(e)}")
+
+
+@private_app.get("/groups/{group_id}/messages")
+async def get_group_messages(
+    group_id: str,
+    limit: int = 100,
+    offset: int = 0
+):
+    """
+    Get messages from a specific group
+    Requires valid API key in X-API-Key header and whitelisted IP
+    """
+    try:
+        messages = db.get_group_messages(group_id, limit, offset)
+        return {
+            "group_id": group_id,
+            "count": len(messages),
+            "limit": limit,
+            "offset": offset,
+            "messages": messages
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving group messages: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve group messages: {str(e)}")
 
 
 @private_app.get("/stats")
