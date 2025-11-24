@@ -1,127 +1,251 @@
-# SignalController
+# SignalController# SignalController
 
-A secure service for receiving and sending Signal messages via signal-cli REST API, designed to run on a Proxmox VM.
 
-## 🏗️ Architecture
 
-SignalController consists of two separate interfaces:
+A FastAPI-based service for sending and receiving Signal messages via signal-cli REST API.A secure service for receiving and sending Signal messages via signal-cli REST API, designed to run on a Proxmox VM.
 
-### 1. **Public Interface** (Port 8443, exposed to internet)
-- **Purpose**: Receives incoming Signal messages via webhook
-- **Security**: Rate-limited, HTTPS only, no sending capabilities
-- **Endpoints**:
-  - `POST /webhook/signal` - Webhook for incoming messages
+
+
+## Features## 🏗️ Architecture
+
+
+
+- **Send Messages**: REST API endpoint to send Signal messagesSignalController consists of two separate interfaces:
+
+- **Receive Messages**: Automatic processing of incoming messages via SSE stream
+
+- **Message Storage**: SQLite database for message history and conversations### 1. **Public Interface** (Port 8443, exposed to internet)
+
+- **Dual Interface**: - **Purpose**: Receives incoming Signal messages via webhook
+
+  - Public (port 8888): Receives messages from signal-cli- **Security**: Rate-limited, HTTPS only, no sending capabilities
+
+  - Private (port 9000): API for sending messages (localhost only)- **Endpoints**:
+
+- **Security**: API key authentication, Cloudflare SSL termination  - `POST /webhook/signal` - Webhook for incoming messages
+
   - `GET /health` - Health check
+
+## Architecture
 
 ### 2. **Private Interface** (Port 9000, internal only)
-- **Purpose**: Send messages and query stored messages
-- **Security**: API key authentication, bound to localhost
-- **Endpoints**:
-  - `POST /send` - Send Signal messages
-  - `GET /messages` - Retrieve stored messages
+
+```- **Purpose**: Send messages and query stored messages
+
+Internet → Cloudflare → Cloudflare Tunnel → VM:8888 (public) → signal-cli:8080- **Security**: API key authentication, bound to localhost
+
+                                          ↓- **Endpoints**:
+
+Other VMs → localhost:9000 (private API)  - `POST /send` - Send Signal messages
+
+```  - `GET /messages` - Retrieve stored messages
+
   - `GET /messages/{id}` - Get specific message
-  - `GET /stats` - Get statistics
+
+## Quick Setup  - `GET /stats` - Get statistics
+
   - `GET /health` - Health check
+
+### 1. Install
 
 ## 📁 Project Structure
 
-```
-SignalController/
-├── backend/
-│   ├── main.py              # FastAPI application
-│   ├── config.py            # Configuration management
+```bash
+
+cd /opt```
+
+git clone https://github.com/JanKnapen/signal-controller.gitSignalController/
+
+cd signal-controller├── backend/
+
+sudo ./scripts/install.sh│   ├── main.py              # FastAPI application
+
+```│   ├── config.py            # Configuration management
+
 │   ├── signal_client.py     # signal-cli REST API client
-│   └── requirements.txt     # Python dependencies
+
+### 2. Register Signal│   └── requirements.txt     # Python dependencies
+
 ├── database/
-│   ├── db.py               # Database operations
-│   └── init_db.py          # Schema initialization
-├── scripts/
+
+```bash│   ├── db.py               # Database operations
+
+sudo ./scripts/register_signal.sh│   └── init_db.py          # Schema initialization
+
+```├── scripts/
+
 │   ├── install.sh          # Installation script
-│   └── register_signal.sh  # Signal registration helper
+
+Follow prompts to register your phone number (requires captcha).│   └── register_signal.sh  # Signal registration helper
+
 ├── systemd/
-│   ├── signal-cli.service                  # signal-cli REST service
+
+### 3. Configure Environment│   ├── signal-cli.service                  # signal-cli REST service
+
 │   ├── signal-controller-public.service    # Public interface
-│   └── signal-controller-private.service   # Private interface
+
+Create `/etc/signal-controller/.env`:│   └── signal-controller-private.service   # Private interface
+
 ├── docker/
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── .env.example
-└── README.md
+
+```bash│   ├── Dockerfile
+
+SIGNAL_PHONE_NUMBER=+1234567890│   ├── docker-compose.yml
+
+SIGNAL_API_KEY=your_secure_random_key_here│   └── .env.example
+
+```└── README.md
+
 ```
+
+Generate key: `openssl rand -hex 32`
 
 ## 🚀 Installation
 
+### 4. Setup Cloudflare Tunnel
+
 ### Prerequisites
-- Debian/Ubuntu server (tested on Debian 11/12, Ubuntu 20.04/22.04)
-- Root or sudo access
-- A registered phone number for Signal
-- Domain name with DNS pointing to your server (for SSL)
 
-### Automatic Installation
+Configure your Cloudflare Tunnel to point to:- Debian/Ubuntu server (tested on Debian 11/12, Ubuntu 20.04/22.04)
 
-1. **Clone the repository**:
-```bash
-cd /opt
-git clone https://github.com/JanKnapen/signal-controller.git
-cd signal-controller
+```- Root or sudo access
+
+http://YOUR_VM_IP:8888- A registered phone number for Signal
+
+```- Domain name with DNS pointing to your server (for SSL)
+
+
+
+### 5. Start Services### Automatic Installation
+
+
+
+```bash1. **Clone the repository**:
+
+sudo systemctl enable --now signal-cli```bash
+
+sudo systemctl enable --now signal-controller-publiccd /opt
+
+sudo systemctl enable --now signal-controller-privategit clone https://github.com/JanKnapen/signal-controller.git
+
+```cd signal-controller
+
 ```
+
+## API Usage
 
 2. **Run the installation script**:
-```bash
-chmod +x scripts/install.sh
-sudo ./scripts/install.sh
-```
 
-The script will:
-- Install system dependencies (Python, Java, etc.)
-- Download and install signal-cli
-- Set up Python virtual environment
-- Create service user and directories
-- Initialize the database
+### Send Message```bash
+
+chmod +x scripts/install.sh
+
+```bashsudo ./scripts/install.sh
+
+curl -X POST http://localhost:9000/send \```
+
+  -H "Content-Type: application/json" \
+
+  -H "X-API-Key: YOUR_API_KEY" \The script will:
+
+  -d '{- Install system dependencies (Python, Java, etc.)
+
+    "to": "+1234567890",- Download and install signal-cli
+
+    "message": "Hello from SignalController!"- Set up Python virtual environment
+
+  }'- Create service user and directories
+
+```- Initialize the database
+
 - Install systemd services
+
+### Get Messages
 
 ### Manual Installation Steps
 
-If you prefer manual installation or the script fails:
-
-#### 1. Install Dependencies
 ```bash
-sudo apt-get update
+
+curl -X GET "http://localhost:9000/messages?limit=10" \If you prefer manual installation or the script fails:
+
+  -H "X-API-Key: YOUR_API_KEY"
+
+```#### 1. Install Dependencies
+
+```bash
+
+### Get Conversationssudo apt-get update
+
 sudo apt-get install -y python3 python3-pip python3-venv openjdk-21-jre-headless wget curl sqlite3
-```
 
-#### 2. Install signal-cli
-```bash
+```bash```
+
+curl -X GET http://localhost:9000/conversations \
+
+  -H "X-API-Key: YOUR_API_KEY"#### 2. Install signal-cli
+
+``````bash
+
 # Download signal-cli
-wget https://github.com/AsamK/signal-cli/releases/download/v0.13.22/signal-cli-0.13.22.tar.gz
+
+### Get Statisticswget https://github.com/AsamK/signal-cli/releases/download/v0.13.22/signal-cli-0.13.22.tar.gz
+
 tar -xzf signal-cli-0.13.22.tar.gz
-sudo mv signal-cli-0.13.22 /opt/signal-cli
-sudo ln -s /opt/signal-cli/bin/signal-cli /usr/local/bin/signal-cli
+
+```bashsudo mv signal-cli-0.13.22 /opt/signal-cli
+
+curl -X GET http://localhost:9000/stats \sudo ln -s /opt/signal-cli/bin/signal-cli /usr/local/bin/signal-cli
+
+  -H "X-API-Key: YOUR_API_KEY"```
+
 ```
 
 #### 3. Create Service User
-```bash
+
+## File Structure```bash
+
 sudo useradd --system --no-create-home --shell /bin/false signal
+
+``````
+
+signal-controller/
+
+├── backend/          # FastAPI application#### 4. Set Up Directories
+
+├── database/         # SQLite database module```bash
+
+├── scripts/          # Installation & registration scriptssudo mkdir -p /opt/signal-controller
+
+├── systemd/          # Service definitionssudo mkdir -p /var/lib/signal-controller
+
+└── README.mdsudo mkdir -p /var/log/signal-controller
+
+```sudo chown -R signal:signal /opt/signal-controller /var/lib/signal-controller /var/log/signal-controller
+
 ```
 
-#### 4. Set Up Directories
-```bash
-sudo mkdir -p /opt/signal-controller
-sudo mkdir -p /var/lib/signal-controller
-sudo mkdir -p /var/log/signal-controller
-sudo chown -R signal:signal /opt/signal-controller /var/lib/signal-controller /var/log/signal-controller
-```
+## Requirements
 
 #### 5. Install Python Dependencies
-```bash
-cd /opt/signal-controller
-sudo -u signal python3 -m venv venv
-sudo -u signal venv/bin/pip install -r backend/requirements.txt
-```
 
-#### 6. Initialize Database
+- Debian/Ubuntu server```bash
+
+- Python 3.8+cd /opt/signal-controller
+
+- Java 21 (for signal-cli)sudo -u signal python3 -m venv venv
+
+- Phone number for Signal registrationsudo -u signal venv/bin/pip install -r backend/requirements.txt
+
+- Cloudflare Tunnel for external access```
+
+
+
+## License#### 6. Initialize Database
+
 ```bash
-sudo -u signal venv/bin/python3 database/init_db.py /var/lib/signal-controller/messages.db
+
+MITsudo -u signal venv/bin/python3 database/init_db.py /var/lib/signal-controller/messages.db
+
 ```
 
 ## 📱 Signal Registration
