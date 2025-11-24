@@ -1,158 +1,313 @@
-# SignalController# SignalController
+# SignalController# SignalController# SignalController
 
 
 
-A FastAPI-based service for sending and receiving Signal messages via signal-cli REST API.A secure service for receiving and sending Signal messages via signal-cli REST API, designed to run on a Proxmox VM.
+A FastAPI service for sending and receiving Signal messages via signal-cli REST API.
 
 
 
-## Features## 🏗️ Architecture
+## FeaturesA FastAPI-based service for sending and receiving Signal messages via signal-cli REST API.A secure service for receiving and sending Signal messages via signal-cli REST API, designed to run on a Proxmox VM.
 
 
 
-- **Send Messages**: REST API endpoint to send Signal messagesSignalController consists of two separate interfaces:
+- 📤 **Send Messages** - REST API for sending Signal messages
 
-- **Receive Messages**: Automatic processing of incoming messages via SSE stream
+- 📥 **Receive Messages** - Automatic message processing via SSE stream
 
-- **Message Storage**: SQLite database for message history and conversations### 1. **Public Interface** (Port 8443, exposed to internet)
+- 💾 **Message Storage** - SQLite database for history and conversations## Features## 🏗️ Architecture
 
-- **Dual Interface**: - **Purpose**: Receives incoming Signal messages via webhook
+- 🔒 **Secure** - API key authentication, dual interface architecture
 
-  - Public (port 8888): Receives messages from signal-cli- **Security**: Rate-limited, HTTPS only, no sending capabilities
+- ☁️ **Cloudflare Ready** - Works with Cloudflare Tunnel for SSL termination
 
-  - Private (port 9000): API for sending messages (localhost only)- **Endpoints**:
 
-- **Security**: API key authentication, Cloudflare SSL termination  - `POST /webhook/signal` - Webhook for incoming messages
 
-  - `GET /health` - Health check
+## Architecture- **Send Messages**: REST API endpoint to send Signal messagesSignalController consists of two separate interfaces:
 
-## Architecture
 
-### 2. **Private Interface** (Port 9000, internal only)
 
-```- **Purpose**: Send messages and query stored messages
+```- **Receive Messages**: Automatic processing of incoming messages via SSE stream
+
+Internet → Cloudflare → Cloudflare Tunnel → VM:8888 (public) → signal-cli:8080
+
+                                          ↓- **Message Storage**: SQLite database for message history and conversations### 1. **Public Interface** (Port 8443, exposed to internet)
+
+         Other VMs → localhost:9000 (private API)
+
+```- **Dual Interface**: - **Purpose**: Receives incoming Signal messages via webhook
+
+
+
+**Two Interfaces:**  - Public (port 8888): Receives messages from signal-cli- **Security**: Rate-limited, HTTPS only, no sending capabilities
+
+- **Public (port 8888)** - Receives messages from signal-cli (exposed via Cloudflare)
+
+- **Private (port 9000)** - API for sending messages (localhost only)  - Private (port 9000): API for sending messages (localhost only)- **Endpoints**:
+
+
+
+## Quick Setup- **Security**: API key authentication, Cloudflare SSL termination  - `POST /webhook/signal` - Webhook for incoming messages
+
+
+
+### 1. Install  - `GET /health` - Health check
+
+
+
+```bash## Architecture
+
+cd /opt
+
+git clone https://github.com/JanKnapen/signal-controller.git### 2. **Private Interface** (Port 9000, internal only)
+
+cd signal-controller
+
+sudo ./scripts/install.sh```- **Purpose**: Send messages and query stored messages
+
+```
 
 Internet → Cloudflare → Cloudflare Tunnel → VM:8888 (public) → signal-cli:8080- **Security**: API key authentication, bound to localhost
 
+### 2. Register Signal
+
                                           ↓- **Endpoints**:
-
-Other VMs → localhost:9000 (private API)  - `POST /send` - Send Signal messages
-
-```  - `GET /messages` - Retrieve stored messages
-
-  - `GET /messages/{id}` - Get specific message
-
-## Quick Setup  - `GET /stats` - Get statistics
-
-  - `GET /health` - Health check
-
-### 1. Install
-
-## 📁 Project Structure
 
 ```bash
 
-cd /opt```
+sudo ./scripts/register_signal.shOther VMs → localhost:9000 (private API)  - `POST /send` - Send Signal messages
 
-git clone https://github.com/JanKnapen/signal-controller.gitSignalController/
+```
 
-cd signal-controller├── backend/
+```  - `GET /messages` - Retrieve stored messages
 
-sudo ./scripts/install.sh│   ├── main.py              # FastAPI application
+Follow the prompts to register your phone number (requires captcha).
 
-```│   ├── config.py            # Configuration management
+  - `GET /messages/{id}` - Get specific message
 
-│   ├── signal_client.py     # signal-cli REST API client
+### 3. Configure
 
-### 2. Register Signal│   └── requirements.txt     # Python dependencies
+## Quick Setup  - `GET /stats` - Get statistics
 
-├── database/
+Create `/etc/signal-controller/.env`:
 
-```bash│   ├── db.py               # Database operations
+  - `GET /health` - Health check
 
-sudo ./scripts/register_signal.sh│   └── init_db.py          # Schema initialization
+```env
 
-```├── scripts/
+SIGNAL_PHONE_NUMBER=+1234567890### 1. Install
 
-│   ├── install.sh          # Installation script
+SIGNAL_API_KEY=your_secure_random_key_here
 
-Follow prompts to register your phone number (requires captcha).│   └── register_signal.sh  # Signal registration helper
+```## 📁 Project Structure
 
-├── systemd/
 
-### 3. Configure Environment│   ├── signal-cli.service                  # signal-cli REST service
 
-│   ├── signal-controller-public.service    # Public interface
+Generate a secure key: `openssl rand -hex 32````bash
+
+
+
+### 4. Setup Cloudflare Tunnelcd /opt```
+
+
+
+Point your Cloudflare Tunnel to: `http://YOUR_VM_IP:8888`git clone https://github.com/JanKnapen/signal-controller.gitSignalController/
+
+
+
+### 5. Start Servicescd signal-controller├── backend/
+
+
+
+```bashsudo ./scripts/install.sh│   ├── main.py              # FastAPI application
+
+sudo systemctl enable --now signal-cli
+
+sudo systemctl enable --now signal-controller-public```│   ├── config.py            # Configuration management
+
+sudo systemctl enable --now signal-controller-private
+
+```│   ├── signal_client.py     # signal-cli REST API client
+
+
+
+## API Usage### 2. Register Signal│   └── requirements.txt     # Python dependencies
+
+
+
+### Send Message├── database/
+
+
+
+```bash```bash│   ├── db.py               # Database operations
+
+curl -X POST http://localhost:9000/send \
+
+  -H "Content-Type: application/json" \sudo ./scripts/register_signal.sh│   └── init_db.py          # Schema initialization
+
+  -H "X-API-Key: YOUR_API_KEY" \
+
+  -d '{```├── scripts/
+
+    "to": "+1234567890",
+
+    "message": "Hello!"│   ├── install.sh          # Installation script
+
+  }'
+
+```Follow prompts to register your phone number (requires captcha).│   └── register_signal.sh  # Signal registration helper
+
+
+
+### Get Messages├── systemd/
+
+
+
+```bash### 3. Configure Environment│   ├── signal-cli.service                  # signal-cli REST service
+
+curl http://localhost:9000/messages?limit=10 \
+
+  -H "X-API-Key: YOUR_API_KEY"│   ├── signal-controller-public.service    # Public interface
+
+```
 
 Create `/etc/signal-controller/.env`:│   └── signal-controller-private.service   # Private interface
 
+### Get Conversations
+
 ├── docker/
 
-```bash│   ├── Dockerfile
+```bash
 
-SIGNAL_PHONE_NUMBER=+1234567890│   ├── docker-compose.yml
+curl http://localhost:9000/conversations \```bash│   ├── Dockerfile
 
-SIGNAL_API_KEY=your_secure_random_key_here│   └── .env.example
+  -H "X-API-Key: YOUR_API_KEY"
 
-```└── README.md
+```SIGNAL_PHONE_NUMBER=+1234567890│   ├── docker-compose.yml
+
+
+
+### Get StatisticsSIGNAL_API_KEY=your_secure_random_key_here│   └── .env.example
+
+
+
+```bash```└── README.md
+
+curl http://localhost:9000/stats \
+
+  -H "X-API-Key: YOUR_API_KEY"```
 
 ```
 
 Generate key: `openssl rand -hex 32`
 
+## Requirements
+
 ## 🚀 Installation
 
-### 4. Setup Cloudflare Tunnel
+- Debian/Ubuntu server
 
-### Prerequisites
+- Python 3.8+### 4. Setup Cloudflare Tunnel
+
+- Java 21 (for signal-cli)
+
+- Phone number for Signal### Prerequisites
+
+- Cloudflare Tunnel (for external access)
 
 Configure your Cloudflare Tunnel to point to:- Debian/Ubuntu server (tested on Debian 11/12, Ubuntu 20.04/22.04)
 
+## Project Structure
+
 ```- Root or sudo access
-
-http://YOUR_VM_IP:8888- A registered phone number for Signal
-
-```- Domain name with DNS pointing to your server (for SSL)
-
-
-
-### 5. Start Services### Automatic Installation
-
-
-
-```bash1. **Clone the repository**:
-
-sudo systemctl enable --now signal-cli```bash
-
-sudo systemctl enable --now signal-controller-publiccd /opt
-
-sudo systemctl enable --now signal-controller-privategit clone https://github.com/JanKnapen/signal-controller.git
-
-```cd signal-controller
 
 ```
 
-## API Usage
+signal-controller/http://YOUR_VM_IP:8888- A registered phone number for Signal
 
-2. **Run the installation script**:
+├── backend/          # FastAPI application
 
-### Send Message```bash
+├── database/         # SQLite database module```- Domain name with DNS pointing to your server (for SSL)
 
-chmod +x scripts/install.sh
+├── scripts/          # Install & registration scripts
 
-```bashsudo ./scripts/install.sh
+├── systemd/          # Service definitions
 
-curl -X POST http://localhost:9000/send \```
+└── README.md
 
-  -H "Content-Type: application/json" \
+```### 5. Start Services### Automatic Installation
 
-  -H "X-API-Key: YOUR_API_KEY" \The script will:
 
-  -d '{- Install system dependencies (Python, Java, etc.)
 
-    "to": "+1234567890",- Download and install signal-cli
+## Troubleshooting
 
-    "message": "Hello from SignalController!"- Set up Python virtual environment
+
+
+### Check Service Status```bash1. **Clone the repository**:
+
+
+
+```bashsudo systemctl enable --now signal-cli```bash
+
+sudo systemctl status signal-cli
+
+sudo systemctl status signal-controller-publicsudo systemctl enable --now signal-controller-publiccd /opt
+
+sudo systemctl status signal-controller-private
+
+```sudo systemctl enable --now signal-controller-privategit clone https://github.com/JanKnapen/signal-controller.git
+
+
+
+### View Logs```cd signal-controller
+
+
+
+```bash```
+
+sudo journalctl -u signal-controller-public -f
+
+sudo journalctl -u signal-controller-private -f## API Usage
+
+sudo journalctl -u signal-cli -f
+
+```2. **Run the installation script**:
+
+
+
+### Test Endpoints### Send Message```bash
+
+
+
+```bashchmod +x scripts/install.sh
+
+# Test private API
+
+curl http://localhost:9000/health```bashsudo ./scripts/install.sh
+
+
+
+# Test public endpoint (via Cloudflare)curl -X POST http://localhost:9000/send \```
+
+curl https://your-domain.com/health
+
+```  -H "Content-Type: application/json" \
+
+
+
+## License  -H "X-API-Key: YOUR_API_KEY" \The script will:
+
+
+
+MIT  -d '{- Install system dependencies (Python, Java, etc.)
+
+
+
+## Author    "to": "+1234567890",- Download and install signal-cli
+
+
+
+Jan Knapen - [GitHub](https://github.com/JanKnapen/signal-controller)    "message": "Hello from SignalController!"- Set up Python virtual environment
+
 
   }'- Create service user and directories
 
