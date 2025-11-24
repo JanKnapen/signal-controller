@@ -329,6 +329,23 @@ async def get_message(
         raise HTTPException(status_code=500, detail=f"Failed to retrieve message: {str(e)}")
 
 
+@private_app.get("/conversations")
+async def get_conversations(api_key: str = Depends(verify_api_key)):
+    """
+    Get all conversations with message counts
+    Requires valid API key in X-API-Key header
+    """
+    try:
+        conversations = db.get_conversations()
+        return {
+            "conversations": conversations,
+            "count": len(conversations)
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving conversations: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve conversations: {str(e)}")
+
+
 @private_app.get("/stats")
 async def get_stats(api_key: str = Depends(verify_api_key)):
     """
