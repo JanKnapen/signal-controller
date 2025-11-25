@@ -322,34 +322,38 @@ async def send_message(request_data: SendMessageRequest):
         logger.info(f"Message sent successfully to {request_data.to}")
         
         # Store sent message in database
-        timestamp = int(datetime.now().timestamp() * 1000)
-        
-        # Determine if this is a group message (group IDs are base64 strings with = padding)
-        is_group = '=' in request_data.to or len(request_data.to) > 20
-        group_id = request_data.to if is_group else None
-        
-        # Get group name from conversations if it exists
-        group_name = None
-        if is_group:
-            conversations = db.get_conversations()
-            for conv in conversations:
-                if conv.get('group_id') == group_id:
-                    group_name = conv.get('contact_name')
-                    break
-        
-        # Store the sent message
-        message_id = db.store_message(
-            sender_number=config.SIGNAL_PHONE_NUMBER,
-            sender_name="Me",
-            timestamp=timestamp,
-            message_body=request_data.message,
-            attachments=None,
-            raw_data=None,
-            group_id=group_id,
-            group_name=group_name
-        )
-        
-        logger.info(f"Stored sent message {message_id} to {request_data.to}")
+        try:
+            timestamp = int(datetime.now().timestamp() * 1000)
+            
+            # Determine if this is a group message (group IDs are base64 strings with = padding)
+            is_group = '=' in request_data.to or len(request_data.to) > 20
+            group_id = request_data.to if is_group else None
+            
+            # Get group name from conversations if it exists
+            group_name = None
+            if is_group:
+                conversations = db.get_conversations()
+                for conv in conversations:
+                    if conv.get('group_id') == group_id:
+                        group_name = conv.get('contact_name')
+                        break
+            
+            # Store the sent message
+            message_id = db.store_message(
+                sender_number=config.SIGNAL_PHONE_NUMBER,
+                sender_name="Me",
+                timestamp=timestamp,
+                message_body=request_data.message,
+                attachments=None,
+                raw_data=None,
+                group_id=group_id,
+                group_name=group_name
+            )
+            
+            logger.info(f"Stored sent message {message_id} to {request_data.to}")
+        except Exception as db_error:
+            logger.error(f"Failed to store sent message: {db_error}", exc_info=True)
+            # Don't fail the request if database storage fails
         
         return SendMessageResponse(
             status="sent",
