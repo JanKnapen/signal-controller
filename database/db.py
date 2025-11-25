@@ -42,6 +42,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 sender_number TEXT NOT NULL,
                 sender_name TEXT,
+                recipient_number TEXT,
                 timestamp INTEGER NOT NULL,
                 received_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 message_body TEXT,
@@ -72,6 +73,11 @@ class Database:
         cursor.execute('''
             CREATE INDEX IF NOT EXISTS idx_group_id 
             ON messages(group_id)
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_recipient 
+            ON messages(recipient_number)
         ''')
         
         # Conversations table (aggregate view)
@@ -115,10 +121,11 @@ class Database:
         attachments: List[Dict] = None,
         raw_data: Dict = None,
         group_id: str = None,
-        group_name: str = None
+        group_name: str = None,
+        recipient_number: str = None
     ) -> int:
         """
-        Store an incoming message
+        Store an incoming or outgoing message
         
         Args:
             sender_number: Phone number of sender
@@ -129,6 +136,7 @@ class Database:
             raw_data: Raw envelope data from signal-cli
             group_id: Group ID if message is from a group
             group_name: Group name if message is from a group
+            recipient_number: Phone number of recipient (for sent messages)
             
         Returns:
             Message ID
@@ -142,12 +150,13 @@ class Database:
         
         cursor.execute('''
             INSERT INTO messages (
-                sender_number, sender_name, timestamp, message_body,
+                sender_number, sender_name, recipient_number, timestamp, message_body,
                 attachments, raw_data, group_id, group_name
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             sender_number,
             sender_name,
+            recipient_number,
             timestamp,
             message_body,
             attachments_json,
@@ -188,7 +197,8 @@ class Database:
         self,
         limit: int = 100,
         offset: int = 0,
-        sender: Optional[str] = None
+        sender: Optional[str] = None,
+        recipient: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Retrieve messages from database
@@ -197,6 +207,7 @@ class Database:
             limit: Maximum number of messages to return
             offset: Number of messages to skip
             sender: Filter by sender number (optional)
+            recipient: Filter by recipient number (optional)
             
         Returns:
             List of message dictionaries
@@ -204,13 +215,27 @@ class Database:
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        if sender:
+        if sender and recipient:
+            cursor.execute('''
+                SELECT * FROM messages
+                WHERE sender_number = ? AND recipient_number = ?
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            ''', (sender, recipient, limit, offset))
+        elif sender:
             cursor.execute('''
                 SELECT * FROM messages
                 WHERE sender_number = ?
                 ORDER BY timestamp DESC
                 LIMIT ? OFFSET ?
             ''', (sender, limit, offset))
+        elif recipient:
+            cursor.execute('''
+                SELECT * FROM messages
+                WHERE recipient_number = ?
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+            ''', (recipient, limit, offset))
         else:
             cursor.execute('''
                 SELECT * FROM messages

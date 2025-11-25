@@ -347,7 +347,8 @@ async def send_message(request_data: SendMessageRequest):
                 attachments=None,
                 raw_data=None,
                 group_id=group_id,
-                group_name=group_name
+                group_name=group_name,
+                recipient_number=request_data.to if not is_group else None
             )
             
             logger.info(f"Stored sent message {message_id} to {request_data.to}")
@@ -372,22 +373,25 @@ async def get_messages(
     limit: int = 100,
     offset: int = 0,
     sender: Optional[str] = None,
+    recipient: Optional[str] = None,
     group_id: Optional[str] = None
 ):
     """
     Retrieve stored messages from database
-    Supports filtering by sender or group_id
+    Supports filtering by sender, recipient, or group_id
     Requires valid API key in X-API-Key header and whitelisted IP
     Examples:
       /messages - Get all messages
       /messages?sender=+1234567890 - Get messages from specific sender
+      /messages?recipient=+1234567890 - Get messages to specific recipient
+      /messages?sender=+31616293285&recipient=+31681633847 - Get conversation between two numbers
       /messages?group_id=J60Zsn1Msd9SWoeMHvhbNroMRUV32H7BY5n/oOqNlUc= - Get group messages
     """
     try:
         if group_id:
             messages = db.get_group_messages(group_id, limit, offset)
         else:
-            messages = db.get_messages(limit=limit, offset=offset, sender=sender)
+            messages = db.get_messages(limit=limit, offset=offset, sender=sender, recipient=recipient)
         return {
             "count": len(messages),
             "limit": limit,
