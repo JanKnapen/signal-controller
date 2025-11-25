@@ -384,7 +384,7 @@ async def get_messages(
       /messages - Get all messages
       /messages?sender=+1234567890 - Get messages from specific sender
       /messages?recipient=+1234567890 - Get messages to specific recipient
-      /messages?sender=+31616293285&recipient=+31681633847 - Get conversation between two numbers
+      /messages?sender=+1234567890&recipient=+0987654321 - Get conversation between two numbers
       /messages?group_id=J60Zsn1Msd9SWoeMHvhbNroMRUV32H7BY5n/oOqNlUc= - Get group messages
     """
     try:
