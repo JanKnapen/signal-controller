@@ -76,8 +76,8 @@ def verify_ip_whitelist(request: Request):
 
 def is_private_network_url(url: str) -> bool:
     """
-    Check if URL is within a private network range
-    Allows: 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, localhost, 127.0.0.1
+    Check if webhook URL hostname/IP is in the private API whitelist.
+    Uses the same whitelist as the private interface security.
     """
     try:
         parsed = urlparse(url)
@@ -86,20 +86,31 @@ def is_private_network_url(url: str) -> bool:
         if not hostname:
             return False
         
-        # Allow localhost
-        if hostname in ['localhost', '127.0.0.1', '::1']:
+        # Check if hostname is directly in whitelist
+        if hostname in config.PRIVATE_API_WHITELIST:
             return True
         
-        # Check if IP is in private ranges
+        # Try to parse as IP address and check against whitelist
         try:
-            ip = ipaddress.ip_address(hostname)
-            return ip.is_private
+            ip_addr = ipaddress.ip_address(hostname)
+            # Check if this IP is in the whitelist
+            for whitelisted in config.PRIVATE_API_WHITELIST:
+                try:
+                    whitelisted_ip = ipaddress.ip_address(whitelisted)
+                    if ip_addr == whitelisted_ip:
+                        return True
+                except ValueError:
+                    # Whitelisted entry is not an IP (might be hostname)
+                    continue
         except ValueError:
-            # If it's a hostname (not IP), allow it
-            # In production, you might want to resolve DNS and check the IP
-            return True
+            # hostname is not an IP address, it's a domain name
+            # Domain names are allowed if they're in the whitelist
+            pass
             
-    except Exception:
+        return False
+            
+    except Exception as e:
+        logger.error(f"Error validating webhook URL: {e}")
         return False
 
 
