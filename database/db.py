@@ -107,6 +107,26 @@ class Database:
             )
         ''')
         
+        # Webhook subscriptions table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS webhook_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                callback_url TEXT UNIQUE NOT NULL,
+                secret TEXT NOT NULL,
+                enabled BOOLEAN DEFAULT 1,
+                last_success TIMESTAMP,
+                last_failure TIMESTAMP,
+                failure_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_webhook_enabled 
+            ON webhook_subscriptions(enabled)
+        ''')
+        
         conn.commit()
         conn.close()
         
@@ -474,3 +494,143 @@ class Database:
         conn.close()
         
         return log_id
+    
+    # ============================================================================
+    # Webhook Subscription Methods
+    # ============================================================================
+    
+    def add_webhook_subscription(self, callback_url: str, secret: str) -> int:
+        """
+        Add a new webhook subscription
+        
+        Args:
+            callback_url: URL to send webhooks to
+            secret: Secret for HMAC signing
+            
+        Returns:
+            Subscription ID
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT INTO webhook_subscriptions (callback_url, secret, enabled)
+            VALUES (?, ?, 1)
+            ON CONFLICT(callback_url) DO UPDATE SET
+                secret = excluded.secret,
+                enabled = 1,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (callback_url, secret))
+        
+        sub_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Added webhook subscription {sub_id}: {callback_url}")
+        return sub_id
+    
+    def remove_webhook_subscription(self, callback_url: str) -> bool:
+        """
+        Disable a webhook subscription
+        
+        Args:
+            callback_url: URL of the subscription to disable
+            
+        Returns:
+            True if subscription was found and disabled
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE webhook_subscriptions 
+            SET enabled = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE callback_url = ?
+        ''', (callback_url,))
+        
+        affected = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if affected > 0:
+            logger.info(f"Disabled webhook subscription: {callback_url}")
+            return True
+        return False
+    
+    def get_webhook_subscriptions(self, enabled_only: bool = True) -> List[Dict[str, Any]]:
+        """
+        Get all webhook subscriptions
+        
+        Args:
+            enabled_only: If True, only return enabled subscriptions
+            
+        Returns:
+            List of subscription dictionaries
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        if enabled_only:
+            cursor.execute('''
+                SELECT * FROM webhook_subscriptions
+                WHERE enabled = 1
+                ORDER BY created_at DESC
+            ''')
+        else:
+            cursor.execute('''
+                SELECT * FROM webhook_subscriptions
+                ORDER BY created_at DESC
+            ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [dict(row) for row in rows]
+    
+    def update_webhook_success(self, callback_url: str):
+        """
+        Update webhook subscription after successful delivery
+        
+        Args:
+            callback_url: URL of the subscription
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE webhook_subscriptions 
+            SET last_success = CURRENT_TIMESTAMP,
+                failure_count = 0,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE callback_url = ?
+        ''', (callback_url,))
+        
+        conn.commit()
+        conn.close()
+    
+    def update_webhook_failure(self, callback_url: str, max_failures: int = 5):
+        """
+        Update webhook subscription after failed delivery
+        
+        Args:
+            callback_url: URL of the subscription
+            max_failures: Number of failures before auto-disabling
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE webhook_subscriptions 
+            SET last_failure = CURRENT_TIMESTAMP,
+                failure_count = failure_count + 1,
+                updated_at = CURRENT_TIMESTAMP,
+                enabled = CASE 
+                    WHEN failure_count + 1 >= ? THEN 0 
+                    ELSE enabled 
+                END
+            WHERE callback_url = ?
+        ''', (max_failures, callback_url))
+        
+        conn.commit()
+        conn.close()
+

@@ -16,7 +16,7 @@ sys.path.insert(0, str(project_root))
 from fastapi import FastAPI, HTTPException, Request, Depends, Security
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional, List
 import uvicorn
 from datetime import datetime
@@ -24,6 +24,11 @@ import logging
 import asyncio
 import httpx
 import json
+import hmac
+import hashlib
+import secrets
+from urllib.parse import urlparse
+import ipaddress
 
 from database.db import Database
 from backend.signal_client import SignalClient
@@ -69,6 +74,74 @@ def verify_ip_whitelist(request: Request):
     return client_ip
 
 
+def is_private_network_url(url: str) -> bool:
+    """
+    Check if URL is within a private network range
+    Allows: 192.168.0.0/16, 10.0.0.0/8, 172.16.0.0/12, localhost, 127.0.0.1
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        
+        if not hostname:
+            return False
+        
+        # Allow localhost
+        if hostname in ['localhost', '127.0.0.1', '::1']:
+            return True
+        
+        # Check if IP is in private ranges
+        try:
+            ip = ipaddress.ip_address(hostname)
+            return ip.is_private
+        except ValueError:
+            # If it's a hostname (not IP), allow it
+            # In production, you might want to resolve DNS and check the IP
+            return True
+            
+    except Exception:
+        return False
+
+
+async def send_webhook_challenge(callback_url: str) -> Optional[str]:
+    """
+    Send a challenge to verify webhook endpoint
+    
+    Returns:
+        Challenge token if successful, None if failed
+    """
+    challenge = secrets.token_urlsafe(32)
+    
+    try:
+        payload = {
+            "event": "challenge",
+            "challenge": challenge
+        }
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(
+                callback_url,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('challenge') == challenge:
+                    return challenge
+                    
+    except Exception as e:
+        logger.error(f"Challenge failed for {callback_url}: {e}")
+    
+    return None
+
+
+            detail=f"Access denied: IP {client_ip} not in whitelist"
+        )
+    
+    return client_ip
+
+
 async def listen_to_signal_events():
     """
     Background task to listen to signal-cli SSE stream for incoming messages
@@ -98,32 +171,79 @@ async def listen_to_signal_events():
             await asyncio.sleep(5)
 
 
-async def notify_webhook(message_data: dict):
-    """Send webhook notification for new message"""
-    if not config.WEBHOOK_URL:
-        return
+def compute_hmac(payload: str, secret: str) -> str:
+    """Compute HMAC-SHA256 signature for webhook payload"""
+    return hmac.new(
+        secret.encode('utf-8'),
+        payload.encode('utf-8'),
+        hashlib.sha256
+    ).hexdigest()
+
+
+async def notify_webhook_subscriber(callback_url: str, secret: str, message_data: dict, retry_count: int = 0):
+    """
+    Send webhook notification to a single subscriber with HMAC signing
     
+    Args:
+        callback_url: URL to send the webhook to
+        secret: Secret for HMAC signing
+        message_data: Message payload
+        retry_count: Current retry attempt (for exponential backoff)
+    """
     try:
-        headers = {"Content-Type": "application/json"}
+        # Serialize payload
+        payload = json.dumps(message_data, separators=(',', ':'))
         
-        # Add optional secret header for authentication
-        if config.WEBHOOK_SECRET:
-            headers["X-Webhook-Secret"] = config.WEBHOOK_SECRET
+        # Compute HMAC signature
+        signature = compute_hmac(payload, secret)
         
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        headers = {
+            "Content-Type": "application/json",
+            "X-Signal-HMAC": signature
+        }
+        
+        timeout = httpx.Timeout(5.0, connect=2.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
-                config.WEBHOOK_URL,
-                json=message_data,
+                callback_url,
+                content=payload,
                 headers=headers
             )
             
             if response.status_code == 200:
-                logger.info(f"Webhook notification sent successfully")
+                logger.info(f"Webhook delivered to {callback_url}")
+                db.update_webhook_success(callback_url)
             else:
-                logger.warning(f"Webhook returned status {response.status_code}")
+                logger.warning(f"Webhook {callback_url} returned status {response.status_code}")
+                db.update_webhook_failure(callback_url)
                 
     except Exception as e:
-        logger.error(f"Failed to send webhook notification: {e}")
+        logger.error(f"Failed to deliver webhook to {callback_url}: {e}")
+        db.update_webhook_failure(callback_url)
+        
+        # Exponential backoff retry (max 3 attempts)
+        if retry_count < 3:
+            await asyncio.sleep(2 ** retry_count)
+            await notify_webhook_subscriber(callback_url, secret, message_data, retry_count + 1)
+
+
+async def notify_all_webhooks(message_data: dict):
+    """Send webhook notifications to all active subscribers"""
+    subscriptions = db.get_webhook_subscriptions(enabled_only=True)
+    
+    if not subscriptions:
+        logger.debug("No active webhook subscriptions")
+        return
+    
+    logger.info(f"Notifying {len(subscriptions)} webhook subscribers")
+    
+    # Send to all subscribers concurrently
+    tasks = [
+        notify_webhook_subscriber(sub['callback_url'], sub['secret'], message_data)
+        for sub in subscriptions
+    ]
+    
+    await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def process_incoming_message(data: dict):
@@ -183,7 +303,7 @@ async def process_incoming_message(data: dict):
             )
             logger.info(f"Stored message {message_id} from {source_number}: {message_body[:50]}")
         
-        # Send webhook notification
+        # Send webhook notification to all subscribers
         webhook_data = {
             "event": "new_message",
             "message_id": message_id,
@@ -195,7 +315,7 @@ async def process_incoming_message(data: dict):
             "group_name": group_name,
             "attachments": attachment_info
         }
-        asyncio.create_task(notify_webhook(webhook_data))
+        asyncio.create_task(notify_all_webhooks(webhook_data))
         
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)
@@ -534,6 +654,174 @@ async def get_stats():
     except Exception as e:
         logger.error(f"Error retrieving stats: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve statistics: {str(e)}")
+
+
+# ============================================================================
+# Webhook Subscription Endpoints
+# ============================================================================
+
+class WebhookSubscribeRequest(BaseModel):
+    """Request model for webhook subscription"""
+    callback_url: HttpUrl
+    secret: Optional[str] = None
+
+
+class WebhookUnsubscribeRequest(BaseModel):
+    """Request model for webhook unsubscription"""
+    callback_url: HttpUrl
+
+
+@private_app.post("/api/webhooks/subscribe")
+async def subscribe_webhook(request: WebhookSubscribeRequest):
+    """
+    Subscribe to webhook notifications
+    
+    Request body:
+        callback_url: Your webhook endpoint URL
+        secret: Optional secret for HMAC signing (will be generated if not provided)
+    
+    Returns:
+        Subscription details including the secret for HMAC verification
+    """
+    try:
+        callback_url = str(request.callback_url)
+        
+        # Validate URL is in private network
+        if not is_private_network_url(callback_url):
+            raise HTTPException(
+                status_code=403,
+                detail="Webhook URL must be within a private network (192.168.x.x, 10.x.x.x, 172.16-31.x.x, or localhost)"
+            )
+        
+        # Generate secret if not provided
+        secret = request.secret or secrets.token_urlsafe(32)
+        
+        # Send challenge to verify endpoint
+        logger.info(f"Sending challenge to {callback_url}")
+        challenge_result = await send_webhook_challenge(callback_url)
+        
+        if not challenge_result:
+            raise HTTPException(
+                status_code=400,
+                detail="Webhook challenge failed. Endpoint must respond to challenge requests"
+            )
+        
+        # Add subscription to database
+        sub_id = db.add_webhook_subscription(callback_url, secret)
+        
+        logger.info(f"Webhook subscription created: {callback_url}")
+        
+        return {
+            "status": "subscribed",
+            "subscription_id": sub_id,
+            "callback_url": callback_url,
+            "secret": secret,
+            "message": "Webhook subscription created successfully. Use the secret to verify HMAC signatures."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error subscribing webhook: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to subscribe webhook: {str(e)}")
+
+
+@private_app.post("/api/webhooks/unsubscribe")
+async def unsubscribe_webhook(request: WebhookUnsubscribeRequest):
+    """
+    Unsubscribe from webhook notifications
+    
+    Request body:
+        callback_url: Your webhook endpoint URL
+    
+    Returns:
+        Confirmation of unsubscription
+    """
+    try:
+        callback_url = str(request.callback_url)
+        
+        success = db.remove_webhook_subscription(callback_url)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Webhook subscription not found")
+        
+        logger.info(f"Webhook unsubscribed: {callback_url}")
+        
+        return {
+            "status": "unsubscribed",
+            "callback_url": callback_url,
+            "message": "Webhook subscription removed successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unsubscribing webhook: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to unsubscribe webhook: {str(e)}")
+
+
+@private_app.get("/api/webhooks/subscribers")
+async def list_webhook_subscribers(include_disabled: bool = False):
+    """
+    List all webhook subscribers
+    
+    Query params:
+        include_disabled: Include disabled subscriptions (default: false)
+    
+    Returns:
+        List of webhook subscriptions (secrets are hidden)
+    """
+    try:
+        subscriptions = db.get_webhook_subscriptions(enabled_only=not include_disabled)
+        
+        # Hide secrets in response
+        for sub in subscriptions:
+            sub['secret'] = '***hidden***'
+        
+        return {
+            "subscribers": subscriptions,
+            "count": len(subscriptions)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing webhooks: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list webhooks: {str(e)}")
+
+
+@private_app.post("/api/webhooks/test")
+async def test_webhook(request: WebhookSubscribeRequest):
+    """
+    Test webhook connectivity without subscribing
+    
+    Request body:
+        callback_url: Webhook URL to test
+        secret: Secret for HMAC signing (optional)
+    
+    Returns:
+        Test result
+    """
+    try:
+        callback_url = str(request.callback_url)
+        secret = request.secret or "test_secret"
+        
+        # Send test message
+        test_payload = {
+            "event": "test",
+            "message": "This is a test webhook from SignalController",
+            "timestamp": int(datetime.now().timestamp() * 1000)
+        }
+        
+        await notify_webhook_subscriber(callback_url, secret, test_payload)
+        
+        return {
+            "status": "success",
+            "message": "Test webhook sent successfully",
+            "callback_url": callback_url
+        }
+        
+    except Exception as e:
+        logger.error(f"Error testing webhook: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Webhook test failed: {str(e)}")
 
 
 @private_app.get("/health")
