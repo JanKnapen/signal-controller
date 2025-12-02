@@ -98,6 +98,34 @@ async def listen_to_signal_events():
             await asyncio.sleep(5)
 
 
+async def notify_webhook(message_data: dict):
+    """Send webhook notification for new message"""
+    if not config.WEBHOOK_URL:
+        return
+    
+    try:
+        headers = {"Content-Type": "application/json"}
+        
+        # Add optional secret header for authentication
+        if config.WEBHOOK_SECRET:
+            headers["X-Webhook-Secret"] = config.WEBHOOK_SECRET
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(
+                config.WEBHOOK_URL,
+                json=message_data,
+                headers=headers
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Webhook notification sent successfully")
+            else:
+                logger.warning(f"Webhook returned status {response.status_code}")
+                
+    except Exception as e:
+        logger.error(f"Failed to send webhook notification: {e}")
+
+
 async def process_incoming_message(data: dict):
     """Process an incoming message from signal-cli"""
     try:
@@ -154,6 +182,20 @@ async def process_incoming_message(data: dict):
                 last_message_at=datetime.fromtimestamp(timestamp / 1000)
             )
             logger.info(f"Stored message {message_id} from {source_number}: {message_body[:50]}")
+        
+        # Send webhook notification
+        webhook_data = {
+            "event": "new_message",
+            "message_id": message_id,
+            "sender_number": source_number,
+            "sender_name": source_name,
+            "message_body": message_body,
+            "timestamp": timestamp,
+            "group_id": group_id,
+            "group_name": group_name,
+            "attachments": attachment_info
+        }
+        asyncio.create_task(notify_webhook(webhook_data))
         
     except Exception as e:
         logger.error(f"Error processing message: {e}", exc_info=True)

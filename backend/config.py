@@ -37,6 +37,11 @@ class Config:
         whitelist_str = os.getenv('PRIVATE_API_WHITELIST', '127.0.0.1')
         self.PRIVATE_API_WHITELIST = [ip.strip() for ip in whitelist_str.split(',') if ip.strip()]
         
+        # Webhook URL for new message notifications (optional)
+        # Example: "http://192.168.1.100:8000/api/signal/new-message/"
+        self.WEBHOOK_URL = os.getenv('WEBHOOK_URL', '')
+        self.WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET', '')  # Optional secret for webhook authentication
+        
         # Create directories if they don't exist (only if writable)
         # systemd services have these directories created by install.sh
         try:
